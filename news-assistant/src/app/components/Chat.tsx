@@ -1,7 +1,7 @@
 "use client";
 import { SignIn, SignUp, UserButton, useUser } from "@clerk/nextjs";
 import axios from "axios";
-import { BotIcon, Send } from "lucide-react";
+import { BotIcon, Send, User } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { supabase } from "../lib/supabase";
@@ -115,11 +115,11 @@ export default function Chat() {
                 <>
                     <div className="text-center flex justify-between px-4 py-2">
                         <h1 className="text-2xl font-bold">Welcome, {user.fullName}</h1>
-                        <UserButton afterSignOutUrl="/" />
+                        {/* <UserButton afterSignOutUrl="/" /> */}
                     </div>
 
                     {/* Chat Messages */}
-                    <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+                    <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 pb-16">
                         {messages.length === 0 ? (
                             <p className="text-gray-400 text-center">No messages yet. Start a conversation!</p>
                         ) : (
@@ -129,13 +129,22 @@ export default function Chat() {
                                     className={`flex items-start gap-3 w-full ${msg.role === "user" ? "justify-end" : "justify-start"
                                         }`}
                                 >
-                                    {msg.role === "ai" && <BotIcon className="w-5 h-5 text-gray-400" />}
-                                    <div
-                                        className={`p-3 rounded-lg max-w-[75%] ${msg.role === "user" ? "bg-blue-500 text-white" : "bg-gray-800 text-gray-200"
-                                            }`}
-                                    >
-                                        {msg.role === "ai" ? <ReactMarkdown>{msg.content}</ReactMarkdown> : <span>{msg.content}</span>}
-                                    </div>
+                                    {msg.role === "ai" ?
+                                        <div className="flex gap-2">
+                                            <BotIcon className="w-10 h-10 text-gray-400" />
+                                            <div className="p-3 rounded-lg max-w-full bg-gray-800 text-gray-200 m-2" >
+                                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                            </div>
+                                        </div> :
+                                        <div className="flex gap-2">
+                                            <div className="p-3 rounded-lg max-w-full bg-blue-500 text-white ">
+                                                <span className="break-words" >
+                                                    {msg.content}
+                                                </span>
+                                            </div>
+                                            <UserButton />
+                                        </div>
+                                    }
                                 </div>
                             ))
                         )}
@@ -143,7 +152,7 @@ export default function Chat() {
                     </div>
 
                     {/* Input Box */}
-                    <div className="p-4 border-t border-gray-700 bg-gray-800 fixed bottom-0 w-full flex">
+                    <div className="p-4 border-gray-700 fixed bottom-0 w-full flex">
                         <div className="w-full max-w-4xl mx-auto flex items-center gap-2">
                             <input
                                 type="text"
