@@ -104,18 +104,12 @@ export default function Chat() {
         <div className="h-screen w-screen flex flex-col bg-gray-900 text-white">
             {/* Header */}
             <div className="p-4 text-center border-b border-gray-700">
-                <h2 className="text-xl font-bold">Chat with AI</h2>
+                <h1 className="text-3xl font-bold text-center">📰 AI News Assistant</h1>
             </div>
 
             {!isSignedIn ? (
-                <div className="text-center">
+                <div className="text-center flex justify-center items-center mt-5">
                     {showSignUp ? <SignUp routing="hash" /> : <SignIn routing="hash" />}
-                    <button
-                        className="mt-4 text-blue-500 underline"
-                        onClick={() => setShowSignUp(!showSignUp)}
-                    >
-                        {showSignUp ? "Already have an account? Sign In" : "Create an Account"}
-                    </button>
                 </div>
             ) : (
                 <>
