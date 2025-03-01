@@ -1,28 +1,100 @@
 "use client";
+import { SignIn, SignUp, UserButton, useUser } from "@clerk/nextjs";
 import axios from "axios";
 import { BotIcon, Send } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import { supabase } from "../lib/supabase";
 
 export default function Chat() {
-    const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+    const { user, isSignedIn } = useUser();
+    const [messages, setMessages] = useState<{ id: string; role: string; content: string }[]>([]);
     const [input, setInput] = useState("");
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
+    const [showSignUp, setShowSignUp] = useState(false);
 
+    // Scroll to the latest message
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
+    // Fetch messages when user logs in
+    useEffect(() => {
+        if (user) fetchMessages();
+    }, [user]);
+
+    // Real-time updates from Supabase
+    useEffect(() => {
+        if (!user) return;
+
+        const subscription = supabase
+            .channel("messages")
+            .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+                setMessages((prev) => {
+                    const exists = prev.some((msg) => msg.id === payload.new.id);
+                    if (!exists) {
+                        return [
+                            ...prev,
+                            {
+                                id: payload.new.id,
+                                role: payload.new.role,
+                                content: payload.new.content,
+                            },
+                        ];
+                    }
+                    return prev;
+                });
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(subscription);
+        };
+    }, [user]);
+
+    // Fetch user-specific messages from Supabase
+    const fetchMessages = async () => {
+        const { data, error } = await supabase
+            .from("messages")
+            .select("*")
+            .eq("user_id", user?.id)
+            .order("created_at", { ascending: true });
+
+        if (error) {
+            console.error("Error fetching messages: ", error);
+        } else {
+            setMessages(data.map((msg) => ({
+                id: msg.id,
+                role: msg.role,
+                content: msg.content
+            })));
+        }
+    };
+
     const sendMessage = async () => {
         if (!input.trim()) return;
 
-        const newMessages = [...messages, { role: "user", content: input }];
-        setMessages(newMessages);
+        if (!user) {
+            alert("Please sign in to chat.");
+            return;
+        }
+
+        const newMessage = { id: crypto.randomUUID(), role: "user", content: input, user_id: user.id };
+        setMessages((prev) => [...prev, newMessage]);
         setInput("");
+
+        await supabase.from("messages").insert([newMessage]);
 
         try {
             const res = await axios.post("/api/chat", { message: input });
-            setMessages([...newMessages, { role: "ai", content: res.data.reply }]);
+            const aiMessage = {
+                id: crypto.randomUUID(),
+                role: "ai",
+                content: res.data.reply,
+                user_id: user.id,
+            };
+            setMessages((prev) => [...prev, aiMessage]);
+            await supabase.from("messages").insert([aiMessage]);
         } catch (error) {
             console.error("Error fetching response:", error);
         }
@@ -35,45 +107,68 @@ export default function Chat() {
                 <h2 className="text-xl font-bold">Chat with AI</h2>
             </div>
 
-            {/* Chat Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-                {messages.map((msg, index) => (
-                    <div
-                        key={index}
-                        className={`flex items-start gap-3 w-full ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                        {msg.role === "ai" && <BotIcon className="w-5 h-5 text-gray-400" />}
-                        <div className={`p-3 rounded-lg max-w-[75%] ${msg.role === "user" ? "bg-blue-500 text-white" : "bg-gray-800 text-gray-200"}`}>
-                            {msg.role === "ai" ? (
-                                <ReactMarkdown >{msg.content}</ReactMarkdown>
-                            ) : (
-                                <span>{msg.content}</span>
-                            )}
-                        </div>
-                    </div>
-                ))}
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Box */}
-            <div className="p-4 border-t border-gray-700 bg-gray-800 fixed bottom-0 w-full flex">
-                <div className="w-full max-w-4xl mx-auto flex items-center gap-2">
-                    <input
-                        type="text"
-                        className="flex-1 p-3 bg-gray-700 text-white rounded-lg outline-none w-full"
-                        placeholder="Ask about any news, enter any url to get its news"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                    />
+            {!isSignedIn ? (
+                <div className="text-center">
+                    {showSignUp ? <SignUp routing="hash" /> : <SignIn routing="hash" />}
                     <button
-                        className="bg-blue-600 px-4 py-2 rounded-lg text-white flex items-center"
-                        onClick={sendMessage}
+                        className="mt-4 text-blue-500 underline"
+                        onClick={() => setShowSignUp(!showSignUp)}
                     >
-                        <Send className="w-4 h-4 mr-1" /> Send
+                        {showSignUp ? "Already have an account? Sign In" : "Create an Account"}
                     </button>
                 </div>
-            </div>
+            ) : (
+                <>
+                    <div className="text-center flex justify-between px-4 py-2">
+                        <h1 className="text-2xl font-bold">Welcome, {user.fullName}</h1>
+                        <UserButton afterSignOutUrl="/" />
+                    </div>
+
+                    {/* Chat Messages */}
+                    <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+                        {messages.length === 0 ? (
+                            <p className="text-gray-400 text-center">No messages yet. Start a conversation!</p>
+                        ) : (
+                            messages.map((msg) => (
+                                <div
+                                    key={msg.id}
+                                    className={`flex items-start gap-3 w-full ${msg.role === "user" ? "justify-end" : "justify-start"
+                                        }`}
+                                >
+                                    {msg.role === "ai" && <BotIcon className="w-5 h-5 text-gray-400" />}
+                                    <div
+                                        className={`p-3 rounded-lg max-w-[75%] ${msg.role === "user" ? "bg-blue-500 text-white" : "bg-gray-800 text-gray-200"
+                                            }`}
+                                    >
+                                        {msg.role === "ai" ? <ReactMarkdown>{msg.content}</ReactMarkdown> : <span>{msg.content}</span>}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Input Box */}
+                    <div className="p-4 border-t border-gray-700 bg-gray-800 fixed bottom-0 w-full flex">
+                        <div className="w-full max-w-4xl mx-auto flex items-center gap-2">
+                            <input
+                                type="text"
+                                className="flex-1 p-3 bg-gray-700 text-white rounded-lg outline-none w-full"
+                                placeholder="Ask me anything..."
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                            />
+                            <button
+                                className="bg-blue-600 px-4 py-2 rounded-lg text-white flex items-center"
+                                onClick={sendMessage}
+                            >
+                                <Send className="w-4 h-4 mr-1" /> Send
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 }
